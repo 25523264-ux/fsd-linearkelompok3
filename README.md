@@ -31,6 +31,173 @@ Tujuan: memprediksi `median_house_value` berdasarkan 8 fitur di atas.
 
 Pada tahap ini kita melihat statistik deskriptif dan membuat tiga visualisasi untuk memahami distribusi target, hubungan antarfitur, serta hubungan fitur dengan target.
 
+**Statistik deskriptif:** dataset berisi 17.000 baris dengan 8 fitur dan 1 target, semuanya numerik. Setiap kolom terisi penuh (count 17.000), jadi tidak ada indikasi missing value. Target `median_house_value` memiliki rata-rata sekitar 207.301 USD dan median 180.400 USD (rentang 14.999 sampai 500.001 USD). Fitur `total_rooms`, `total_bedrooms`, `population`, dan `households` memiliki nilai maksimum jauh di atas kuartil ketiga, yang menandakan outlier.
+
+**Tiga visualisasi dan temuannya:**
+
+| Visualisasi | Temuan utama |
+|---|---|
+| Histogram target | Distribusi condong ke kanan, dengan sebagian besar blok berharga 100.000 sampai 250.000 USD. Ada lonjakan di 500.000 USD karena harga dibatasi (*capped*) di 500.001, bukan pola alami. |
+| Heatmap korelasi | `median_income` berkorelasi paling kuat dengan target (r = 0,69), sedangkan fitur lain lemah (|r| ≤ 0,14). `total_rooms`, `total_bedrooms`, `population`, dan `households` saling berkorelasi sangat tinggi (0,86 sampai 0,98), sehingga berpotensi multikolinearitas. `longitude` dan `latitude` berkorelasi -0,93. |
+| Scatter plot fitur vs target | `median_income` menunjukkan tren naik yang jelas, dengan sebaran yang melebar di pendapatan tinggi. `housing_median_age` dan `total_rooms` tidak menunjukkan pola linear. Garis horizontal di 500.000 terlihat di semua plot (efek *capping*), dan `total_rooms` memiliki titik-titik ekstrem di sisi kanan. |
+
+**Implikasi untuk tahap berikutnya:** nilai target yang di-*cap* dan outlier fitur perlu ditangani di A3, sedangkan multikolinearitas antar fitur ukuran blok dibahas di A4.
+
+## A3. Preprocessing
+Langkah (1)Cek Missing Values (2) Cek Data Duplikat (3) Cek Outlier
+### Keputusan preprocessing (A3)
+
+| Langkah | Hasil pengecekan | Keputusan dan alasan |
+|---|---|---|
+| Missing values | Tidak ada (0 di semua 9 kolom) | Tidak perlu imputasi atau penghapusan baris. |
+| Data duplikat | 0 baris duplikat | Tidak ada baris yang dihapus. `drop_duplicates()` tetap dijalankan sebagai pengaman. |
+| Target *capped* | 814 baris (4,8%) bernilai 500.001 | **Dihapus.** Nilai ini batas atas data (*censored*), bukan harga sebenarnya. Jika dipertahankan, garis regresi tertarik ke nilai yang tidak nyata. |
+| Outlier fitur (`total_rooms`, `total_bedrooms`, `population`, `households`) | Sekitar 1.015 sampai 1.076 outlier per fitur (sekitar 6% data), dideteksi dengan IQR | **Di-*clip* ke batas IQR**, tidak dihapus. Menghapusnya membuang banyak baris, sedangkan outlier ini kemungkinan blok berpenduduk padat yang valid, bukan kesalahan data. |
+| Encoding | Semua fitur numerik | Tidak diperlukan. |
+| Scaling | - | Tidak diperlukan untuk prediksi OLS. `StandardScaler` hanya dipakai setelah pembagian data (fit pada data latih saja, mencegah *data leakage*) untuk membandingkan koefisien antar fitur. |
+
+Ukuran data akhir setelah preprocessing: **16.186 baris x 9 kolom** (17.000 dikurangi 814 baris target *capped*).
+
+## A4. Pemilihan Fitur
+Fitur dipilih dengan tiga analisis: (1) korelasi dengan target, (2) multikolinearitas dengan VIF, (3) skor F dari `SelectKBest`.
+
+| Fitur | Korelasi dgn target | VIF | Skor F | Keputusan |
+|---|---|---|---|---|
+| `median_income` | 0,65 | 2,1 | 11.574 | Dipertahankan |
+| `households` | 0,11 | 33,1 | 203 | Dipertahankan (wakil ukuran blok) |
+| `housing_median_age` | 0,07 | 1,3 | 75 | Dipertahankan |
+| `latitude` | -0,15 | 9,3 | 375 | Dipertahankan (efek lokasi) |
+| `longitude` | -0,04 | 9,0 | 31 | Dipertahankan (efek lokasi) |
+| `total_rooms` | 0,18 | 13,2 | 537 | Dibuang (redundan) |
+| `total_bedrooms` | 0,09 | 32,9 | 129 | Dibuang (redundan) |
+| `population` | 0,01 | 6,1 | 1,2 | Dibuang (redundan, skor F terendah) |
+
+`median_income` konsisten menjadi fitur terkuat pada korelasi maupun skor F. Empat fitur ukuran blok saling tumpang tindih, sehingga hanya `households` yang dipertahankan. `latitude` dan `longitude` tetap dipakai karena lokasi sangat memengaruhi harga, dengan catatan koefisiennya tidak diinterpretasikan terpisah. Fitur akhir: 5 fitur, data 16.186 baris.
+
+## A5. Pembagian Data
+dengan tujuan utama mengevaluasi kemampuan geleralisasi model secara asil pada data baru yang belum pernah dilihat untuk mencegah overfitting & data leakage, menguji kemampuan prediksi nyata, mendeteksi masalah pemodelan
+
+### 1. Ringkasan Pembagian
+Data dibagi menggunakan `train_test_split` dari `scikit-learn` dengan rasio **80:20** dan `random_state=42`.
+
+* **Total Sampel**: 16.186 baris
+* **Data Latih (Train Set)**: 12.948 sampel (80%)
+* **Data Uji (Test Set)**: 3.238 sampel (20%)
+* **Fitur ($X$)**: `longitude`, `latitude`, `housing_median_age`, `households`, `median_income`
+* **Target ($y$)**: `median_house_value`
+
+---
+
+### 2. Analisis Pembagian Data
+
+* **Rasio 80:20**: Proporsi ini ideal untuk menjaga kecukupan data saat melatih koefisien regresi sekaligus menyediakan sampel uji yang valid.
+* **Penggunaan `random_state=42`**: Mengunci sifat pengacakan (*seed*) agar pembagian data bersifat konsisten dan dapat direproduksi ulang (*reproducible*).
+* **Metode Sampling**: Menggunakan *Simple Random Sampling* yang sesuai untuk data numerik kontinu berukuran moderat.
+* **Pencegahan Data Leakage**: Pembagian dilakukan sebelum pemrosesan *StandardScaler* agar informasi dari data uji tidak membocorkan statistik ke model latih.
+
+## A6. Pemodelan Linear Regression
+Dengan tujuan utama membangun dan mempelajari hubungan matematis antara fitur-fitur pilihan dengan harga rumah seperti mencari model prediksi, mengstandarisasi dan untuk dasar analisis serta evaluasi yang akan digunakan untuk A7. Model dilatih pada data latih. Koefisien ditampilkan dalam satuan asli agar mudah diinterpretasikan, dan dalam bentuk standardisasi agar bisa dibandingkan antar fitur.
+
+## A6. Pemodelan Linear Regression
+
+### 1. Ringkasan Parameter Model
+Model **Linear Regression** dilatih menggunakan 12.948 sampel data latih ($X_{train}$ dan $y_{train}$) berbasis 5 fitur terpilih.
+
+* **Nilai Intercept (Satuan Asli)**: `-3.410.403,96`
+* **Persamaan Model (Satuan Asli)**:
+  $$y = -3.410.403,96 - 40.153,47(\text{longitude}) - 38.872,09(\text{latitude}) + 1.117,60(\text{housing\_median\_age}) + 40,39(\text{households}) + 37.220,75(\text{median\_income})$$
+
+---
+
+### 2. Koefisien & Bobot Pengaruh Fitur
+
+Untuk membandingkan tingkat pengaruh (*importance*) antar fitur tanpa terpengaruh perbedaan satuan, digunakan **Koefisien Terstandardisasi** via `StandardScaler`:
+
+| Urutan | Fitur | Koefisien Asli | Koefisien Terstandardisasi | Arah & Tingkat Pengaruh |
+| :---: | :--- | :---: | :---: | :--- |
+| **1** | `latitude` | `-38.872,09` | **`-83.432,83`** | Sangat Kuat (Negatif) |
+| **2** | `longitude` | `-40.153,47` | **`-80.536,30`** | Sangat Kuat (Negatif) |
+| **3** | `median_income` | `+37.220,75` | **`+58.967,83`** | Sangat Kuat (Positif) |
+| **4** | `housing_median_age` | `+1.117,60` | **`+14.040,94`** | Moderat (Positif) |
+| **5** | `households` | `+40,39` | **`+10.766,94`** | Lemah (Positif) |
+
+---
+
+### 3. Analisis Hasil Temuan A6
+
+* **Pengaruh Posisi Geografis (`latitude` & `longitude`)**:
+  Koefisien terstandardisasi menunjukkan bahwa koordinat lokasi memiliki pengaruh absolut terbesar terhadap harga rumah. Nilai negatif yang besar mencerminkan tren geografis wilayah California, di mana perpindahan ke arah timur/utara (menjauhi pesisir utama/area metropolitan tertentu) berkorelasi dengan penurunan harga rumah.
+* **Pengaruh Utama Pendapatan (`median_income`)**:
+  Merupakan variabel prediktor non-lokasi terkuat. Setiap kenaikan $10.000 pada rata-rata pendapatan rumah tangga berkorelasi dengan kenaikan harga rumah sebesar ±**$37.220,75** (dengan asumsi fitur lain konstan).
+* **Efek Usia Bangunan & Ukuran Blok**:
+  Usia bangunan (`housing_median_age`) dan jumlah rumah tangga (`households`) memberikan kontribusi positif namun lebih kecil terhadap kenaikan harga rumah.
+* **Interpretasi Intercept**:
+  Nilai *intercept* negatif yang ekstrem (`-3.410.403,96`) muncul karena tidak ada titik data riil di mana koordinat geografis dan variabel lain bernilai nol. Nilai ini bertindak secara matematis sebagai konstanta penyeimbang dalam skala garis regresi.
+
+## A7. Evaluasi Model
+
+### 1. Tujuan Evaluasi Model
+Proses evaluasi model dilakukan untuk:
+* **Mengukur Akurasi Prediksi**: Menilai seberapa kecil tingkat kesalahan (*error*) antara harga rumah hasil prediksi model dengan harga aktual.
+* **Mendeteksi Overfitting / Underfitting**: Membandingkan metrik performa pada data latih (*train set*) dan data uji (*test set*) untuk memastikan model dapat melakukan generalisasi dengan baik pada data baru.
+* **Validasi Asumsi Regresi**: Memeriksa kelayakan model linear melalui analisis distribusi *error* (residual plot).
+
+---
+
+### 2. Metrik Evaluasi
+
+Eksperimen menggunakan 4 metrik evaluasi utama pada kedua himpunan data:
+
+| Metrik Evaluasi | Data Latih (*Train*) | Data Uji (*Test*) | Selisih / Evaluasi |
+| :--- | :---: | :---: | :---: |
+| **MAE (Mean Absolute Error)** | `48.383,62` | `47.415,29` | -$968,33 |
+| **MSE (Mean Squared Error)** | `4,13 x 10⁹` | `4,05 x 10⁹` | -$8,00 x 10⁷ |
+| **RMSE (Root Mean Squared Error)** | `64.282,22` | `63.689,57` | -$592,65 |
+| **R² Score (Koefisien Determinasi)** | `0,5722` (57,22%) | `0,5671` (56,71%) | -0,0051 (-0,51%) |
+
+---
+
+### 3. Analisis Hasil Evaluasi A7
+
+* **Akurasi & Deviasi Prediksi**:
+  * **MAE ($47.415,29)**: Secara rata-rata, prediksi harga rumah meleset sekitar **$47.415** dari harga asli secara absolut.
+  * **RMSE ($63.689,57)**: Bobot kesalahan yang lebih besar (penalti untuk *error* ekstrem) menunjukkan angka rata-rata deviasi kuadrat sebesar **$63.689**.
+* **Daya Jelaskan Model (R² Score)**:
+  * Model mampu menjelaskan **56,71%** variasi harga rumah pada data uji (*unseen data*). Sisa **43,29%** variasi dipengaruhi oleh faktor lain di luar 5 fitur yang digunakan.
+* **Keseimbangan Performa (Bebas Overfitting)**:
+  * Performa pada *train set* (R²: 0.5722) dan *test set* (R²: 0.5671) sangat identik dengan beda tipis (~0,51%). Hal ini membuktikan bahwa **model tidak mengalami overfitting** dan memiliki kemampuan generalisasi yang stabil.
+ 
+## A8. Analisis Performa
+
+### 1. Kemampuan Prediksi Model
+* **R² Score Data Uji ($0,5671$)**: Model mampu menjelaskan **56,71%** variasi harga rumah pada data uji (*unseen data*).
+* **Rata-rata Kesalahan (RMSE & MAE)**:
+  * **RMSE ($63.689,57)**: Secara rata-rata, estimasi prediksi model memiliki deviasi kesalahan sebesar **$63.689,57** dari harga aktual.
+  * **MAE ($47.415,29)**: Selisih mutlak antara harga asli dan harga prediksi rata-rata sebesar **$47.415,29**.
+
+---
+
+### 2. Diagnosis Fitting (Overfitting / Underfitting)
+* **Keseimbangan Performa**: Hasil metrik pada data latih ($R^2 = 0,5722$; $\text{RMSE} = 64.282,22$) dan data uji ($R^2 = 0,5671$; $\text{RMSE} = 63.689,57$) menunjukkan nilai yang sangat konsisten.
+* **Evaluasi**: Model **tidak mengalami overfitting** (tidak sekadar menghafal data latih). Namun, model berada pada kondisi **underfitting ringan** karena asumsi hubungan linear yang sederhana belum mampu menangkap pola hubungan kompleks pada data real estat.
+
+---
+
+### 3. Hirarki Fitur Paling Berpengaruh
+Berdasarkan nilai **koefisien terstandardisasi**, berikut tingkat pengaruh variabel terhadap prediksi target:
+1. `latitude` (`-83.432,83`) — Pengaruh negatif terbesar (posisi utara-selatan).
+2. `longitude` (`-80.536,30`) — Pengaruh negatif terbesar kedua (posisi barat-timur).
+3. `median_income` (`+58.967,83`) — Prediktor positif utama (tingkat pendapatan).
+4. `housing_median_age` (`+14.040,94`) — Pengaruh positif sedang (usia bangunan).
+5. `households` (`+10.766,94`) — Pengaruh positif paling kecil (skala area).
+
+---
+
+### 4. Keterbatasan Model & Evaluasi Residual
+1. **Asumsi Linearitas**: Hubungan antara karakteristik wilayah dan harga properti di lapangan bersifat non-linear, sehingga regresi linear memiliki batas kemampuan penyesuaian (*underfitting*).
+2. **Pengaruh Batas *Capping* Target**: Adanya nilai *censored* ($500.001) pada dataset asli membatasi akurasi prediksi untuk rumah berharga sangat tinggi.
+3. **Penyederhanaan Geografis**: Penggunaan `latitude` dan `longitude` sebagai nilai linear tunggal kurang optimal dibanding memodelkan variabel spasial non-linear (seperti jarak ke garis pantai atau pusat kota).
+4. **Heteroskedastisitas**: Pada *residual plot*, sebaran *error* cenderung membesar seiring meningkatnya nilai harga prediksi, yang melanggar asumsi varians konstan (*homoscedasticity*) pada regresi linear.
 
 # Bagian B: Logistic Regression
 
