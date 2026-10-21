@@ -230,4 +230,130 @@ Berdasarkan nilai **koefisien terstandardisasi**, berikut tingkat pengaruh varia
 - Kelas 0 (False): bukan Pokémon Legendary
 - Kelas 1 (True): Pokémon Legendary (kelas positif)
 
+## B2. Eksplorasi dan Visualisasi Data
 
+**Statistik deskriptif:** dataset berisi 800 baris. Semua kolom numerik terisi penuh (count 800), sedangkan kolom `Type 2` hanya terisi 414 baris. Rata-rata `Total` sekitar 435 dengan rentang 180 sampai 780. Beberapa statistik memiliki nilai maksimum jauh di atas kuartil ketiga (misalnya HP maksimum 255, padahal 75% data di bawah 80), yang menandakan outlier. `Generation` hanya bernilai 1 sampai 6, sehingga lebih tepat dianggap kategori.
+
+**Tiga visualisasi dan temuannya:**
+
+| Visualisasi | Temuan utama |
+|---|---|
+| Bar chart distribusi kelas | Kelas sangat tidak seimbang: 735 non-Legendary (91,9%) dan 65 Legendary (8,1%). Model yang selalu menebak "Non-Legendary" sudah mendapat accuracy sekitar 92%, sehingga accuracy tidak cukup untuk menilai model. |
+| Box plot fitur per kelas | Pada keenam statistik, median Legendary lebih tinggi daripada non-Legendary. Perbedaan paling jelas pada Sp. Atk dan Attack. Kelas non-Legendary punya banyak outlier ke atas, terutama pada HP dan Defense. |
+| Heatmap korelasi | `Total` berkorelasi kuat dengan statistik penyusunnya (Sp. Atk 0,75, Attack 0,74, Sp. Def 0,72), sehingga berpotensi multikolinearitas. Terhadap `Legendary`, korelasi tertinggi ada pada `Total` (0,50) dan Sp. Atk (0,45), diikuti Sp. Def (0,36), Attack (0,35), dan Speed (0,33). `Generation` hampir tidak berkorelasi dengan fitur lain. |
+
+**Implikasi untuk tahap berikutnya:** ketidakseimbangan kelas dan outlier ditangani di B3, sedangkan multikolinearitas `Total` dibahas di B4.
+
+## B3. Preprocessing
+
+### Keputusan preprocessing (B3)
+
+| Langkah | Hasil pengecekan | Keputusan dan alasan |
+|---|---|---|
+| Missing values | Hanya `Type 2` yang kosong (386 baris) | Diisi kategori "None". Kosong di sini berarti Pokémon hanya punya satu tipe, bukan data hilang, jadi baris tidak dibuang. |
+| Data duplikat | (isi: jumlah duplikat penuh, kemungkinan 0) | Tidak ada baris dihapus. Nomor `#` yang berulang berasal dari bentuk Mega dengan statistik berbeda, jadi dipertahankan sebagai data sah. |
+| Outlier | (isi: jumlah outlier per fitur dari metode IQR) | Dipertahankan. Outlier adalah Pokémon nyata dengan statistik ekstrem (bukan kesalahan input), dan banyak di antaranya justru Legendary yang menjadi target. |
+| Target | `Legendary` bertipe True/False | Diubah menjadi 1/0. |
+| Encoding | `Type 1` dan `Type 2` kategorikal | One-hot encoding dengan `drop_first=True`. |
+| Scaling | Fitur numerik berskala mirip, tetapi koefisien perlu dibandingkan | `StandardScaler`, di-fit hanya pada data latih setelah pembagian data, untuk mencegah *data leakage*. |
+| Kelas tidak seimbang | 735 : 65 (sekitar 92 : 8) | `class_weight='balanced'` pada Logistic Regression. Dipilih dibanding resampling karena data kecil (800 baris), sehingga tidak ingin membuang data atau membuat data sintetis. |
+
+Tanpa penanganan, model cenderung mengabaikan kelas Legendary karena menebak semua baris sebagai non-Legendary sudah memberi accuracy tinggi.
+
+## B4. Pemilihan Fitur
+
+Fitur dipilih dengan tiga analisis: (1) multikolinearitas dengan VIF, (2) F-test (`SelectKBest`) untuk fitur numerik, (3) chi-square untuk fitur kategorikal.
+
+| Fitur | VIF | Skor F / chi-square | Keputusan |
+|---|---|---|---|
+| `Total` | (isi, sangat tinggi) | - | Dibuang (jumlah dari enam statistik lain, redundan) |
+| `HP` | (isi) | (isi) | Dipertahankan |
+| `Attack` | (isi) | (isi) | Dipertahankan |
+| `Defense` | (isi) | (isi) | Dipertahankan |
+| `Sp. Atk` | (isi) | (isi) | Dipertahankan |
+| `Sp. Def` | (isi) | (isi) | Dipertahankan |
+| `Speed` | (isi) | (isi) | Dipertahankan |
+| `Generation` | - | (isi) | (Dibuang / dipertahankan, sesuai output) |
+| `Type 1`, `Type 2` | - | (isi) | (Dipertahankan / dibuang, sesuai output) |
+| `#`, `Name` | - | - | Dibuang (hanya identitas, tidak membawa informasi kekuatan) |
+
+(Tulis 2 sampai 3 kalimat kesimpulan, misalnya: setelah `Total` dibuang, VIF keenam statistik turun ke kisaran rendah.) Fitur akhir: (jumlah) kolom setelah one-hot encoding, data 800 baris.
+
+## B5. Pembagian Data
+
+Data dibagi dengan `train_test_split` rasio **80:20**, `stratify=y`, dan `random_state=42`.
+
+* **Total sampel**: 800 baris
+* **Data latih**: 640 sampel (80%)
+* **Data uji**: 160 sampel (20%), terdiri dari 147 non-Legendary dan 13 Legendary
+* **Fitur (X)**: (isi sesuai B4)
+* **Target (y)**: `Legendary`
+
+**Analisis:**
+* **`stratify=y`**: menjaga proporsi Legendary (sekitar 8%) tetap sama di data latih dan data uji. Tanpa ini, data uji yang kecil bisa kebetulan berisi sangat sedikit Legendary sehingga evaluasi tidak adil.
+* **`random_state=42`**: mengunci pengacakan agar hasil dapat direproduksi.
+* **Pencegahan data leakage**: `StandardScaler` di-fit hanya pada data latih, lalu diterapkan ke data uji.
+
+## B6. Pemodelan Logistic Regression
+
+Model: `LogisticRegression(class_weight='balanced', max_iter=1000, random_state=42)`, dilatih pada 640 data latih.
+
+* **Intercept**: (isi dari output)
+
+| Urutan | Fitur | Koefisien | Odds ratio | Arah dan tingkat pengaruh |
+| :---: | :--- | :---: | :---: | :--- |
+| 1 | (isi) | (isi) | (isi) | (isi) |
+| 2 | (isi) | (isi) | (isi) | (isi) |
+| 3 | (isi) | (isi) | (isi) | (isi) |
+
+(Cukup tampilkan 5 sampai 6 fitur teratas dari tabel di notebook.)
+
+**Cara membaca:** koefisien positif (odds ratio di atas 1) berarti kenaikan fitur meningkatkan peluang Pokémon menjadi Legendary, dan koefisien negatif sebaliknya. Karena fitur numerik sudah distandarisasi, odds ratio menunjukkan perubahan odds untuk kenaikan 1 standar deviasi, dengan fitur lain dianggap tetap. Koefisien kolom tipe dibaca relatif terhadap tipe acuan yang dibuang oleh `drop_first=True`.
+
+**Interpretasi:**
+* (Sebutkan 2 sampai 3 fitur dengan pengaruh positif terbesar dan arti odds ratio-nya, misalnya "kenaikan 1 standar deviasi Sp. Atk meningkatkan odds Legendary sekitar X kali".)
+* (Sebutkan fitur dengan pengaruh kecil atau negatif.)
+
+## B7. Evaluasi Model
+
+Evaluasi dilakukan pada data uji (160 baris, 13 Legendary).
+
+| Metrik | Nilai |
+| :--- | :---: |
+| Accuracy | 0,900 |
+| Precision (Legendary) | 0,440 |
+| Recall (Legendary) | 0,846 |
+| F1-score (Legendary) | 0,579 |
+| AUC | 0,947 |
+
+**Confusion matrix:**
+
+| | Ditebak Non-Legendary | Ditebak Legendary |
+| :--- | :---: | :---: |
+| **Aslinya Non-Legendary** | 133 (TN) | 14 (FP) |
+| **Aslinya Legendary** | 2 (FN) | 11 (TP) |
+
+**Kurva ROC:** berada jauh di atas garis tebakan acak dengan AUC 0,947, sehingga model mampu membedakan Pokémon Legendary dan non-Legendary dengan baik.
+
+## B8. Analisis Performa
+
+### 1. Metrik yang paling relevan
+* **Accuracy kurang cocok** dijadikan acuan. Pada data uji, 147 dari 160 baris adalah non-Legendary, sehingga model yang selalu menebak "Non-Legendary" mendapat accuracy 91,9%, bahkan sedikit di atas model kita (90,0%), tetapi tidak menemukan satu pun Legendary.
+* **Recall (0,846)** paling relevan karena tujuan utama adalah menemukan Legendary yang ada: 11 dari 13 berhasil ditemukan.
+* **Precision (0,440)** perlu diperhatikan: dari 25 Pokémon yang ditebak Legendary, hanya 11 yang benar.
+* **F1-score (0,579)** menyeimbangkan keduanya, dan **AUC (0,947)** menunjukkan kemampuan pemisahan kelas yang baik di berbagai ambang batas.
+
+### 2. Jenis kesalahan (confusion matrix)
+* Terdapat **14 false positive** (Pokémon biasa yang ditebak Legendary) dan **2 false negative** (Legendary yang terlewat). Kesalahan terbanyak adalah **false positive**.
+* Ini konsekuensi `class_weight='balanced'`: model lebih berani menebak Legendary, sehingga recall naik tetapi precision turun.
+* False positive kemungkinan terjadi pada Pokémon biasa berstatistik sangat tinggi (outlier di box plot, misalnya bentuk Mega atau evolusi akhir) yang polanya mirip Legendary.
+
+### 3. Fitur yang paling berpengaruh
+(Isi 2 sampai 3 fitur teratas dari tabel koefisien B6.)
+
+### 4. Keterbatasan model
+1. **Data uji kecil**: hanya 13 Legendary, sehingga satu kesalahan mengubah recall sekitar 7,7 poin persentase dan hasil bisa berbeda jika split diacak ulang.
+2. **Bentuk Mega**: variasi seperti Mega dicatat sebagai baris terpisah dengan statistik mirip bentuk aslinya. Jika satu bentuk masuk data latih dan bentuk lain masuk data uji, performa bisa tampak lebih baik dari sebenarnya.
+3. **Status Legendary tidak sepenuhnya ditentukan statistik**: kategori ini ditentukan oleh alur cerita dan aturan game.
+4. **Asumsi linearitas**: Logistic Regression tidak menangkap pola non-linear. Model seperti Random Forest bisa dicoba sebagai pembanding.
+5. **Ambang klasifikasi 0,5 belum dioptimalkan**: menaikkannya dapat menaikkan precision dengan konsekuensi recall turun.
