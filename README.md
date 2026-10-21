@@ -250,47 +250,47 @@ Berdasarkan nilai **koefisien terstandardisasi**, berikut tingkat pengaruh varia
 
 | Langkah | Hasil pengecekan | Keputusan dan alasan |
 |---|---|---|
-| Missing values | Hanya `Type 2` yang kosong (386 baris) | Diisi kategori "None". Kosong di sini berarti Pokémon hanya punya satu tipe, bukan data hilang, jadi baris tidak dibuang. |
-| Data duplikat | (isi: jumlah duplikat penuh, kemungkinan 0) | Tidak ada baris dihapus. Nomor `#` yang berulang berasal dari bentuk Mega dengan statistik berbeda, jadi dipertahankan sebagai data sah. |
-| Outlier | (isi: jumlah outlier per fitur dari metode IQR) | Dipertahankan. Outlier adalah Pokémon nyata dengan statistik ekstrem (bukan kesalahan input), dan banyak di antaranya justru Legendary yang menjadi target. |
+| Missing values | Hanya `Type 2` yang kosong (386 dari 800 baris) | Diisi kategori "None". Kosong di sini berarti Pokémon hanya punya satu tipe, bukan data hilang, jadi baris tidak dibuang. |
+| Data duplikat | 0 baris duplikat penuh | Tidak ada baris dihapus. Nomor `#` yang berulang berasal dari bentuk Mega dengan statistik berbeda, jadi dipertahankan sebagai data sah. |
+| Outlier | Dideteksi dengan IQR: HP 19, Defense 13, Sp. Atk 10, Attack 7, Sp. Def 7, Speed 2 | Dipertahankan. Outlier adalah Pokémon nyata dengan statistik ekstrem (bukan kesalahan input), dan banyak di antaranya justru Legendary yang menjadi target. Jumlahnya juga kecil dibanding 800 baris. |
 | Target | `Legendary` bertipe True/False | Diubah menjadi 1/0. |
 | Encoding | `Type 1` dan `Type 2` kategorikal | One-hot encoding dengan `drop_first=True`. |
-| Scaling | Fitur numerik berskala mirip, tetapi koefisien perlu dibandingkan | `StandardScaler`, di-fit hanya pada data latih setelah pembagian data, untuk mencegah *data leakage*. |
+| Scaling | Fitur numerik berada pada rentang yang mirip, tetapi koefisien perlu dibandingkan antar fitur | `StandardScaler`, di-fit hanya pada data latih setelah pembagian data, untuk mencegah *data leakage*. |
 | Kelas tidak seimbang | 735 : 65 (sekitar 92 : 8) | `class_weight='balanced'` pada Logistic Regression. Dipilih dibanding resampling karena data kecil (800 baris), sehingga tidak ingin membuang data atau membuat data sintetis. |
 
-Tanpa penanganan, model cenderung mengabaikan kelas Legendary karena menebak semua baris sebagai non-Legendary sudah memberi accuracy tinggi.
+Tanpa penanganan, model cenderung mengabaikan kelas Legendary karena menebak semua baris sebagai non-Legendary sudah memberi accuracy tinggi (sekitar 92%).
 
 ## B4. Pemilihan Fitur
 
 Fitur dipilih dengan tiga analisis: (1) multikolinearitas dengan VIF, (2) F-test (`SelectKBest`) untuk fitur numerik, (3) chi-square untuk fitur kategorikal.
 
-| Fitur | VIF | Skor F / chi-square | Keputusan |
-|---|---|---|---|
-| `Total` | (isi, sangat tinggi) | - | Dibuang (jumlah dari enam statistik lain, redundan) |
-| `HP` | (isi) | (isi) | Dipertahankan |
-| `Attack` | (isi) | (isi) | Dipertahankan |
-| `Defense` | (isi) | (isi) | Dipertahankan |
-| `Sp. Atk` | (isi) | (isi) | Dipertahankan |
-| `Sp. Def` | (isi) | (isi) | Dipertahankan |
-| `Speed` | (isi) | (isi) | Dipertahankan |
-| `Generation` | - | (isi) | (Dibuang / dipertahankan, sesuai output) |
-| `Type 1`, `Type 2` | - | (isi) | (Dipertahankan / dibuang, sesuai output) |
-| `#`, `Name` | - | - | Dibuang (hanya identitas, tidak membawa informasi kekuatan) |
+| Fitur | VIF dengan `Total` | VIF tanpa `Total` | Skor F | Keputusan |
+|---|---|---|---|---|
+| `Total` | sekitar 1,0 x 10¹⁵ | - | - | Dibuang (jumlah dari enam statistik lain, redundan) |
+| `Sp. Atk` | sekitar 1,0 x 10¹⁵ | 1,7 | 201,4 | Dipertahankan |
+| `Sp. Def` | sekitar 1,0 x 10¹⁵ | 1,9 | 121,8 | Dipertahankan |
+| `Attack` | sekitar 1,0 x 10¹⁵ | 1,8 | 108,1 | Dipertahankan |
+| `Speed` | sekitar 1,0 x 10¹⁵ | 1,5 | 95,4 | Dipertahankan |
+| `HP` | sekitar 1,0 x 10¹⁵ | 1,4 | 64,6 | Dipertahankan |
+| `Defense` | sekitar 1,0 x 10¹⁵ | 1,7 | 51,6 | Dipertahankan |
+| `Generation` | - | - | 5,1 (p = 0,024) | Dibuang (skor F jauh paling rendah, dan hanya penanda generasi rilis, bukan ukuran kekuatan) |
+| `Type 1`, `Type 2` | - | - | chi-square tertinggi: Dragon 37,0; Psychic 20,6; Flying 9,4 | Dipertahankan (beberapa tipe signifikan, p < 0,05) |
+| `#`, `Name` | - | - | - | Dibuang (hanya identitas, tidak membawa informasi kekuatan) |
 
-(Tulis 2 sampai 3 kalimat kesimpulan, misalnya: setelah `Total` dibuang, VIF keenam statistik turun ke kisaran rendah.) Fitur akhir: (jumlah) kolom setelah one-hot encoding, data 800 baris.
+`Total` memiliki VIF yang praktis tak hingga karena merupakan jumlah persis dari enam statistik lainnya (muncul peringatan *singular matrix* saat VIF dihitung, yang justru membuktikan redundansi ini). Setelah `Total` dibuang, VIF keenam statistik turun ke 1,4 sampai 1,9 (jauh di bawah batas 5), sehingga tidak ada multikolinearitas yang mengganggu. Semua statistik memiliki p-value mendekati 0 pada F-test. Fitur akhir: 6 statistik numerik ditambah hasil one-hot encoding `Type 1` dan `Type 2`, total **41 kolom**, dengan 800 baris.
 
 ## B5. Pembagian Data
 
 Data dibagi dengan `train_test_split` rasio **80:20**, `stratify=y`, dan `random_state=42`.
 
 * **Total sampel**: 800 baris
-* **Data latih**: 640 sampel (80%)
+* **Data latih**: 640 sampel (80%), terdiri dari 588 non-Legendary dan 52 Legendary
 * **Data uji**: 160 sampel (20%), terdiri dari 147 non-Legendary dan 13 Legendary
-* **Fitur (X)**: (isi sesuai B4)
+* **Fitur (X)**: HP, Attack, Defense, Sp. Atk, Sp. Def, Speed, serta hasil one-hot `Type 1` dan `Type 2` (41 kolom)
 * **Target (y)**: `Legendary`
 
 **Analisis:**
-* **`stratify=y`**: menjaga proporsi Legendary (sekitar 8%) tetap sama di data latih dan data uji. Tanpa ini, data uji yang kecil bisa kebetulan berisi sangat sedikit Legendary sehingga evaluasi tidak adil.
+* **`stratify=y`**: proporsi Legendary tetap 8,125% di data latih (52 dari 640) maupun data uji (13 dari 160). Tanpa ini, data uji yang kecil bisa kebetulan berisi sangat sedikit Legendary sehingga evaluasi tidak adil.
 * **`random_state=42`**: mengunci pengacakan agar hasil dapat direproduksi.
 * **Pencegahan data leakage**: `StandardScaler` di-fit hanya pada data latih, lalu diterapkan ke data uji.
 
@@ -298,21 +298,32 @@ Data dibagi dengan `train_test_split` rasio **80:20**, `stratify=y`, dan `random
 
 Model: `LogisticRegression(class_weight='balanced', max_iter=1000, random_state=42)`, dilatih pada 640 data latih.
 
-* **Intercept**: (isi dari output)
+* **Intercept**: -7,33
 
 | Urutan | Fitur | Koefisien | Odds ratio | Arah dan tingkat pengaruh |
 | :---: | :--- | :---: | :---: | :--- |
-| 1 | (isi) | (isi) | (isi) | (isi) |
-| 2 | (isi) | (isi) | (isi) | (isi) |
-| 3 | (isi) | (isi) | (isi) | (isi) |
+| 1 | `Speed` | +1,923 | 6,85 | Positif, sangat kuat |
+| 2 | `Sp. Def` | +1,722 | 5,60 | Positif, sangat kuat |
+| 3 | `Sp. Atk` | +1,600 | 4,96 | Positif, sangat kuat |
+| 4 | `HP` | +1,476 | 4,38 | Positif, kuat |
+| 5 | `Type 1_Psychic` | +1,458 | 4,30 | Positif, kuat |
+| 6 | `Defense` | +1,140 | 3,13 | Positif, kuat |
+| ... | ... | ... | ... | ... |
+| terendah 3 | `Type 2_Ground` | -0,981 | 0,375 | Negatif |
+| terendah 2 | `Type 2_Dragon` | -1,192 | 0,304 | Negatif |
+| terendah 1 | `Type 1_Normal` | -1,784 | 0,168 | Negatif, paling kuat |
 
-(Cukup tampilkan 5 sampai 6 fitur teratas dari tabel di notebook.)
+(Enam fitur teratas dan tiga fitur terendah; 32 fitur lain berada di antara keduanya.)
 
-**Cara membaca:** koefisien positif (odds ratio di atas 1) berarti kenaikan fitur meningkatkan peluang Pokémon menjadi Legendary, dan koefisien negatif sebaliknya. Karena fitur numerik sudah distandarisasi, odds ratio menunjukkan perubahan odds untuk kenaikan 1 standar deviasi, dengan fitur lain dianggap tetap. Koefisien kolom tipe dibaca relatif terhadap tipe acuan yang dibuang oleh `drop_first=True`.
+**Cara membaca:** koefisien positif (odds ratio di atas 1) berarti kenaikan fitur meningkatkan peluang Pokémon menjadi Legendary, dan koefisien negatif sebaliknya. Pada fitur numerik yang sudah distandarisasi, odds ratio menunjukkan perubahan odds untuk kenaikan 1 standar deviasi, dengan fitur lain dianggap tetap. Pada kolom tipe (0/1), odds ratio membandingkan Pokémon bertipe tersebut dengan tipe acuan yang dibuang oleh `drop_first=True` (kategori pertama secara alfabet, yaitu Bug).
 
 **Interpretasi:**
-* (Sebutkan 2 sampai 3 fitur dengan pengaruh positif terbesar dan arti odds ratio-nya, misalnya "kenaikan 1 standar deviasi Sp. Atk meningkatkan odds Legendary sekitar X kali".)
-* (Sebutkan fitur dengan pengaruh kecil atau negatif.)
+* **Speed** memiliki pengaruh terbesar: kenaikan 1 standar deviasi Speed meningkatkan odds menjadi Legendary sekitar 6,8 kali, diikuti **Sp. Def** (sekitar 5,6 kali) dan **Sp. Atk** (sekitar 5,0 kali). Statistik pertahanan khusus dan serangan khusus yang tinggi sangat mencirikan Legendary.
+* **HP** (4,4 kali) dan **Defense** (3,1 kali) juga berpengaruh positif, walau lebih kecil.
+* **Type 1_Psychic** meningkatkan odds Legendary sekitar 4,3 kali dibanding tipe acuan, konsisten dengan hasil chi-square di B4 (Psychic termasuk tipe teratas).
+* Pengaruh paling negatif: **Type 1_Normal** (odds menjadi 0,17 kali), **Type 2_Dragon** (0,30 kali), dan **Type 2_Ground** (0,38 kali). Setelah statistik diperhitungkan, Pokémon bertipe ini lebih jarang Legendary dibanding tipe acuan.
+* Urutan koefisien berbeda dari urutan skor F di B4 (Sp. Atk teratas pada F-test, tetapi Speed teratas pada koefisien). Ini wajar karena koefisien menunjukkan pengaruh sebuah fitur dengan fitur lain dianggap tetap, sedangkan F-test melihat tiap fitur secara terpisah.
+* **Intercept** -7,33 adalah log-odds Legendary untuk Pokémon dengan statistik rata-rata dan tipe acuan, yang sangat rendah sesuai kenyataan bahwa Legendary hanya sekitar 8% data.
 
 ## B7. Evaluasi Model
 
