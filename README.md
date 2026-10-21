@@ -32,5 +32,35 @@ Tujuan: memprediksi `median_house_value` berdasarkan 8 fitur di atas.
 Pada tahap ini kita melihat statistik deskriptif dan membuat tiga visualisasi untuk memahami distribusi target, hubungan antarfitur, serta hubungan fitur dengan target.
 
 
+# Bagian B: Logistic Regression
+
+## B1. Deskripsi Dataset
+
+**Sumber:** Pokemon with stats (abcsds), Kaggle. https://www.kaggle.com/datasets/abcsds/pokemon
+
+**Ukuran:** 800 baris dan 13 kolom.
+
+**Tujuan:** memprediksi apakah sebuah Pokémon termasuk kategori *Legendary* berdasarkan statistik dasarnya.
+
+**Arti kolom:**
+| Kolom | Arti |
+|---|---|
+| `#` | Nomor Pokédex |
+| `Name` | Nama Pokémon |
+| `Type 1` | Tipe utama (misalnya Grass, Fire) |
+| `Type 2` | Tipe kedua (boleh kosong) |
+| `Total` | Jumlah seluruh statistik dasar |
+| `HP` | Poin kesehatan |
+| `Attack` | Kekuatan serangan fisik |
+| `Defense` | Pertahanan fisik |
+| `Sp. Atk` | Serangan khusus |
+| `Sp. Def` | Pertahanan khusus |
+| `Speed` | Kecepatan |
+| `Generation` | Generasi kemunculan (1 sampai 6) |
+| `Legendary` | Status Legendary (True/False) |
+
+**Variabel target:** `Legendary`
+- Kelas 0 (False): bukan Pokémon Legendary
+- Kelas 1 (True): Pokémon Legendary (kelas positif)
 
 
